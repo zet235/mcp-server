@@ -67,6 +67,32 @@ Configuration for the extension is done through the Burp Suite UI in the `MCP` t
 - **Enable config editing**: The `Enable tools that can edit your config` checkbox allows the MCP server to expose tools which can edit Burp configuration files.
 - **Advanced options**: You can configure the port and host for the MCP server. By default, it listens on `http://127.0.0.1:9876`.
 
+### Codex plugin
+
+The bundled Codex plugin connects directly to Streamable HTTP at
+`http://127.0.0.1:9876/mcp`. No Java proxy is needed by Codex. Existing SSE
+clients continue to work.
+
+1. Build the updated extension and plugin ZIP from this repository:
+   ```bash
+   ./gradlew embedProxyJar codexPluginZip
+   ```
+2. Load the updated extension JAR into Burp Suite and enable its MCP server.
+3. Add this repository as a local Codex plugin marketplace:
+   ```bash
+   codex plugin marketplace add /absolute/path/to/mcp-server
+   ```
+4. Restart Codex desktop, open Plugins, select **Burp Suite Local**, and install
+   **Burp Suite**. Start a new chat and ask Codex to list Burp tools.
+
+The repository marketplace is `.agents/plugins/marketplace.json`; plugin sources
+are in `plugins/burp-suite`. The distributable ZIP is
+`build/distributions/burp-suite-codex-plugin.zip`. It contains only the plugin
+configuration; Burp and its extension must already be running locally.
+If you change Burp's port, update `plugins/burp-suite/mcp.json` before reinstalling
+or packaging the plugin. Keep the server bound to loopback. Existing Burp
+approval settings still apply to tool calls.
+
 ### Claude Desktop Client
 
 To fully utilize the MCP Server Extension with Claude, you need to configure your Claude client settings appropriately.

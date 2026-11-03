@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "burp-suite",
+  "version": "0.1.0",
+  "description": "Inspect HTTP traffic and use Burp Suite tools from Codex.",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Burp Suite",
+        "shortDescription": "Connect Codex to your local Burp Suite MCP extension",
+        "category": "Developer Tools"
+      }
+    }
+  }
+}
