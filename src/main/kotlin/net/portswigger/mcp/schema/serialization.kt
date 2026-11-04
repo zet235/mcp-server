@@ -47,6 +47,9 @@ fun burp.api.montoya.http.message.HttpRequestResponse.toSerializableForm(): Http
 
 fun ProxyHttpRequestResponse.toSerializableForm(): HttpRequestResponse {
     return HttpRequestResponse(
+        // Burp's proxy history request number (shown in Proxy > HTTP history), so clients can
+        // reference an item by id instead of list offset. Same lookup as save_proxy_http_history_items.
+        id = runCatching { id() }.getOrNull(),
         request = request()?.toString() ?: "<no request>",
         response = response()?.toString() ?: "<no response>",
         notes = annotations().notes()
@@ -116,7 +119,10 @@ enum class AuditIssueConfidence {
 data class HttpRequestResponse(
     val request: String?,
     val response: String?,
-    val notes: String?
+    val notes: String?,
+    // Last so positional callers keep working. Null for items that don't come from proxy
+    // history, so it is omitted from their JSON.
+    val id: Int? = null
 )
 
 @Serializable
