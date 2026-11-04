@@ -2,6 +2,9 @@ package net.portswigger.mcp.config
 
 import burp.api.montoya.logging.Logging
 import burp.api.montoya.persistence.PersistedObject
+import net.portswigger.mcp.schema.DEFAULT_HISTORY_ITEM_MAX_LENGTH
+import net.portswigger.mcp.schema.MAX_HISTORY_ITEM_MAX_LENGTH
+import net.portswigger.mcp.schema.MIN_HISTORY_ITEM_MAX_LENGTH
 import java.lang.ref.WeakReference
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.properties.ReadWriteProperty
@@ -49,6 +52,18 @@ class McpConfig(storage: PersistedObject, private val logging: Logging) {
         }
 
     var filterConfigCredentials by storage.boolean(true)
+
+    private var _historyItemMaxLength by storage.int(DEFAULT_HISTORY_ITEM_MAX_LENGTH)
+
+    /**
+     * Maximum serialized length (characters) of a single item returned by the history/Organizer
+     * listing tools. Values outside [MIN_HISTORY_ITEM_MAX_LENGTH]..[MAX_HISTORY_ITEM_MAX_LENGTH] are clamped.
+     */
+    var historyItemMaxLength: Int
+        get() = _historyItemMaxLength.coerceIn(MIN_HISTORY_ITEM_MAX_LENGTH, MAX_HISTORY_ITEM_MAX_LENGTH)
+        set(value) {
+            _historyItemMaxLength = value.coerceIn(MIN_HISTORY_ITEM_MAX_LENGTH, MAX_HISTORY_ITEM_MAX_LENGTH)
+        }
 
     private var _autoApproveTargets by storage.stringList("")
     private val targetsChangeListeners = CopyOnWriteArrayList<ListenerRegistration>()

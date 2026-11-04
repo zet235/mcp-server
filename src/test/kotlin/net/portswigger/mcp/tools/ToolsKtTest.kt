@@ -43,6 +43,9 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import java.net.ServerSocket
 import javax.swing.JTextArea
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlinx.serialization.json.jsonArray
 
 class ToolsKtTest {
     
@@ -52,11 +55,12 @@ class ToolsKtTest {
     private val testPort = findAvailablePort()
     private var serverStarted = false
     private val config: McpConfig
+    private val persistedObject: PersistedObject
     private val mockHeaders = mutableListOf<HttpHeader>()
     private val capturedRequest = slot<HttpRequest>()
 
     init {
-        val persistedObject = mockk<PersistedObject>().apply {
+        persistedObject = mockk<PersistedObject>().apply {
             every { getBoolean("enabled") } returns true
             every { getBoolean("configEditingTooling") } returns true
             every { getBoolean("requireHttpRequestApproval") } returns false
@@ -67,6 +71,7 @@ class ToolsKtTest {
             every { getString("host") } returns "127.0.0.1"
             every { getString("_autoApproveTargets") } returns ""
             every { getInteger("port") } returns testPort
+            every { getInteger("_historyItemMaxLength") } returns null
             every { setBoolean(any(), any()) } returns Unit
             every { setString(any(), any()) } returns Unit
             every { setInteger(any(), any()) } returns Unit
@@ -828,6 +833,127 @@ class ToolsKtTest {
                 assertTrue(item.getValue("response").jsonPrimitive.content.endsWith("... (truncated)"))
                 assertEquals("keep me", item.getValue("notes").jsonPrimitive.content)
             }
+        }
+
+        @Test
+        fun `get proxy history honours configured item length`() {
+            val proxy = mockk<Proxy>()
+            val historyItem = mockk<ProxyHttpRequestResponse>()
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(historyItem)
+            every { persistedObject.getInteger("_historyItemMaxLength") } returns 20_000
+
+            mockkStatic("net.portswigger.mcp.schema.SerializationKt")
+            every { historyItem.toSerializableForm() } returns HttpRequestResponse(
+                request = "GET / HTTP/1.1\r\n\r\n" + "a".repeat(12_000),
+                response = "HTTP/1.1 200 OK\r\n\r\n",
+                notes = null
+            )
+
+            runBlocking {
+                val text = client.callTool(
+                    "get_proxy_http_history", mapOf("count" to 1, "offset" to 0)
+                ).expectTextContent()
+                val item = Json.parseToJsonElement(text).jsonObject
+
+                assertTrue(text.length > 12_000, "item should not be cut at the 5000 default")
+                assertFalse(item.getValue("request").jsonPrimitive.content.endsWith("... (truncated)"))
+            }
+        }
+    }
+
+    @Nested
+    inner class SaveProxyHistoryToolTests {
+        private val exportDir: Path = Path.of("build", "tmp", "save-history-test-${System.nanoTime()}").toAbsolutePath()
+
+        @AfterEach
+        fun cleanUp() {
+            if (Files.exists(exportDir)) {
+                Files.walk(exportDir).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+            }
+        }
+
+        private fun proxyItem(method: String, path: String, body: String): ProxyHttpRequestResponse {
+            val requestBytes = "$method $path HTTP/1.1\r\nHost: example.com\r\n\r\n$body".toByteArray()
+            val responseBytes = "HTTP/1.1 201 Created\r\n\r\nok".toByteArray()
+            val request = mockk<HttpRequest>().also {
+                every { it.toByteArray() } returns mockk<ByteArray>().also { b -> every { b.bytes } returns requestBytes }
+            }
+            val response = mockk<burp.api.montoya.http.message.responses.HttpResponse>().also {
+                every { it.toByteArray() } returns mockk<ByteArray>().also { b -> every { b.bytes } returns responseBytes }
+                every { it.statusCode() } returns 201.toShort()
+            }
+            return mockk<ProxyHttpRequestResponse>(relaxed = true).also {
+                every { it.request() } returns request
+                every { it.hasResponse() } returns true
+                every { it.response() } returns response
+                every { it.id() } returns path.length
+                every { it.host() } returns "example.com"
+                every { it.port() } returns 443
+                every { it.secure() } returns true
+                every { it.method() } returns method
+                every { it.path() } returns path
+                every { it.edited() } returns false
+                every { it.contains(any<java.util.regex.Pattern>()) } answers {
+                    firstArg<java.util.regex.Pattern>().matcher(String(requestBytes)).find()
+                }
+            }
+        }
+
+        @Test
+        fun `saves matching items and returns only metadata`() {
+            val proxy = mockk<Proxy>()
+            val secretBody = "SECRET-" + "z".repeat(20_000)
+            every { api.proxy() } returns proxy
+            every { proxy.history() } returns listOf(
+                proxyItem("GET", "/a", ""),
+                proxyItem("POST", "/login", secretBody)
+            )
+
+            runBlocking {
+                val text = client.callTool(
+                    "save_proxy_http_history_items",
+                    mapOf("regex" to "^POST", "offset" to 0, "count" to 10, "directory" to exportDir.toString())
+                ).expectTextContent()
+
+                assertFalse(text.contains("SECRET"), "tool output must not contain message contents")
+                val result = Json.parseToJsonElement(text).jsonObject
+                assertEquals(1, result.getValue("saved").jsonPrimitive.content.toInt())
+                val entry = result.getValue("items").jsonArray.single().jsonObject
+                assertEquals("/login", entry.getValue("path").jsonPrimitive.content)
+                assertEquals("POST", entry.getValue("method").jsonPrimitive.content)
+                assertEquals("201", entry.getValue("status").jsonPrimitive.content)
+
+                val file = Path.of(entry.getValue("file").jsonPrimitive.content)
+                assertEquals("6-example.com-POST.json", file.fileName.toString())
+                val saved = Json.parseToJsonElement(Files.readString(file)).jsonObject
+                assertTrue(saved.getValue("requestText").jsonPrimitive.content.endsWith(secretBody))
+            }
+        }
+
+        @Test
+        fun `rejects invalid count and directories outside home`() {
+            runBlocking {
+                val tooMany = client.callTool(
+                    "save_proxy_http_history_items",
+                    mapOf("offset" to 0, "count" to 51, "directory" to exportDir.toString())
+                )
+                assertEquals(true, tooMany?.isError)
+
+                val outside = client.callTool(
+                    "save_proxy_http_history_items",
+                    mapOf("offset" to 0, "count" to 1, "directory" to "/tmp/burp-mcp-outside")
+                )
+                assertEquals(true, outside?.isError)
+                assertTrue(outside.expectTextContent().contains("home directory"))
+
+                val relative = client.callTool(
+                    "save_proxy_http_history_items",
+                    mapOf("offset" to 0, "count" to 1, "directory" to "relative/dir")
+                )
+                assertEquals(true, relative?.isError)
+            }
+            assertFalse(Files.exists(Path.of("/tmp/burp-mcp-outside")))
         }
     }
     

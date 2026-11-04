@@ -8,6 +8,9 @@ import net.portswigger.mcp.ServerState
 import net.portswigger.mcp.Swing
 import net.portswigger.mcp.config.components.*
 import net.portswigger.mcp.providers.Provider
+import net.portswigger.mcp.schema.DEFAULT_HISTORY_ITEM_MAX_LENGTH
+import net.portswigger.mcp.schema.MAX_HISTORY_ITEM_MAX_LENGTH
+import net.portswigger.mcp.schema.MIN_HISTORY_ITEM_MAX_LENGTH
 import java.awt.BorderLayout
 import java.awt.Component.CENTER_ALIGNMENT
 import java.awt.GridBagLayout
@@ -43,6 +46,18 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
     private val validationErrorLabel = WarningLabel()
     private val hostField = JTextField(15)
     private val portField = JTextField(5)
+    private val historyItemMaxLengthSpinner = JSpinner(
+        SpinnerNumberModel(
+            config.historyItemMaxLength,
+            MIN_HISTORY_ITEM_MAX_LENGTH,
+            MAX_HISTORY_ITEM_MAX_LENGTH,
+            1_000
+        )
+    ).apply {
+        toolTipText = "Maximum characters per item returned by the proxy history, WebSocket history and Organizer " +
+            "tools (default $DEFAULT_HISTORY_ITEM_MAX_LENGTH). Applies immediately; save_proxy_http_history_items is never truncated."
+        addChangeListener { (value as? Int)?.let { config.historyItemMaxLength = it } }
+    }
     private val reinstallNotice = WarningLabel("Make sure to reinstall after changing server settings")
 
     private lateinit var serverConfigurationPanel: ServerConfigurationPanel
@@ -74,7 +89,10 @@ class ConfigUi(private val config: McpConfig, private val providers: List<Provid
         )
 
         advancedOptionsPanel = AdvancedOptionsPanel(
-            hostField = hostField, portField = portField, reinstallNotice = reinstallNotice
+            hostField = hostField,
+            portField = portField,
+            reinstallNotice = reinstallNotice,
+            historyItemMaxLengthSpinner = historyItemMaxLengthSpinner
         )
 
         autoApproveTargetsPanel = AutoApproveTargetsPanel(config = config)

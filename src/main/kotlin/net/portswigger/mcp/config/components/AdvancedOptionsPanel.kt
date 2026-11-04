@@ -13,7 +13,8 @@ import javax.swing.event.DocumentListener
 class AdvancedOptionsPanel(
     private val hostField: JTextField,
     private val portField: JTextField,
-    private val reinstallNotice: WarningLabel
+    private val reinstallNotice: WarningLabel,
+    private val historyItemMaxLengthSpinner: JSpinner
 ) : JPanel() {
 
     init {
@@ -43,7 +44,9 @@ class AdvancedOptionsPanel(
         add(createVerticalStrut(Design.Spacing.MD))
 
         val formPanel = createFormPanel(
-            "Server host:" to hostField, "Server port:" to portField
+            "Server host:" to hostField,
+            "Server port:" to portField,
+            "History item max length:" to historyItemMaxLengthSpinner
         )
         add(formPanel)
     }
@@ -90,7 +93,7 @@ class AdvancedOptionsPanel(
             gbc.weightx = 1.0
             gbc.insets = Insets(Design.Spacing.SM, 0, Design.Spacing.SM, 0)
 
-            if (field is JTextField) {
+            if (field is JTextField || field is JSpinner) {
                 field.preferredSize = Dimension(200, 32)
                 field.font = Design.Typography.bodyLarge
             }

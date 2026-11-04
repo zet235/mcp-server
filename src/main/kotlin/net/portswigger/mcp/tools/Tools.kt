@@ -302,7 +302,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
             return@mcpPaginatedTool sequenceOf("HTTP history access denied by Burp Suite")
         }
 
-        api.proxy().history().asSequence().map { encodeHistoryItem(it.toSerializableForm()) }
+        api.proxy().history().asSequence().map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
     }
 
     mcpPaginatedTool<GetProxyHttpHistoryRegex>("Displays items matching a specified regex within the proxy HTTP history") {
@@ -313,7 +313,46 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
 
         val compiledRegex = Pattern.compile(regex)
         api.proxy().history { it.contains(compiledRegex) }.asSequence()
-            .map { encodeHistoryItem(it.toSerializableForm()) }
+            .map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
+    }
+
+    mcpTool<SaveProxyHttpHistoryItems>(
+        "Saves full, untruncated proxy HTTP history items to JSON files (one file per item, named " +
+            "<id>-<host>-<method>.json) containing raw request/response as base64 and UTF-8 text plus metadata. " +
+            "Optional regex filters items like get_proxy_http_history_regex; offset/count paginate the filtered " +
+            "history (count 1-$MAX_SAVE_HISTORY_ITEMS). directory must be an absolute path inside the user's home " +
+            "directory and is created if missing. Returns only file paths and host/method/path/status per item."
+    ) {
+        require(count in 1..MAX_SAVE_HISTORY_ITEMS) { "count must be between 1 and $MAX_SAVE_HISTORY_ITEMS" }
+        require(offset >= 0) { "offset must not be negative" }
+        val home = userHomeDirectory()
+        val requestedDirectory = validateExportDirectory(directory, home)
+        val compiledRegex = regex?.takeIf { it.isNotEmpty() }?.let { Pattern.compile(it) }
+
+        val allowed = checkDataAccessOrDeny(DataAccessType.HTTP_HISTORY, config, api, "HTTP history")
+        if (!allowed) {
+            return@mcpTool "HTTP history access denied by Burp Suite"
+        }
+
+        currentCoroutineContext().ensureActive()
+        val exportDirectory = prepareExportDirectory(requestedDirectory, home)
+        val items = saveProxyHistoryItems(
+            history = api.proxy().history(),
+            matches = { compiledRegex == null || it.contains(compiledRegex) },
+            offset = offset,
+            count = count,
+            directory = exportDirectory
+        )
+        if (items.isEmpty()) {
+            return@mcpTool "Reached end of items"
+        }
+
+        val failed = items.count { it.error != null }
+        api.logging().logToOutput("MCP saved ${items.size - failed} proxy history item(s) to $exportDirectory")
+        Json.encodeToString(
+            SaveProxyHistoryResult.serializer(),
+            SaveProxyHistoryResult(exportDirectory.toString(), items.size - failed, failed, items)
+        )
     }
 
     mcpPaginatedTool<GetOrganizerItems>("Displays items within the Organizer tab") {
@@ -322,7 +361,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
             return@mcpPaginatedTool sequenceOf("Organizer access denied by Burp Suite")
         }
 
-        api.organizer().items().asSequence().map { encodeHistoryItem(it.toSerializableForm()) }
+        api.organizer().items().asSequence().map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
     }
 
     mcpPaginatedTool<GetOrganizerItemsRegex>("Displays items matching a specified regex within the Organizer tab") {
@@ -333,7 +372,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
 
         val compiledRegex = Pattern.compile(regex)
         api.organizer().items { it.contains(compiledRegex) }.asSequence()
-            .map { encodeHistoryItem(it.toSerializableForm()) }
+            .map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
     }
 
     mcpPaginatedTool<GetProxyWebsocketHistory>("Displays items within the proxy WebSocket history") {
@@ -343,7 +382,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
         }
 
         api.proxy().webSocketHistory().asSequence()
-            .map { encodeHistoryItem(it.toSerializableForm()) }
+            .map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
     }
 
     mcpPaginatedTool<GetProxyWebsocketHistoryRegex>("Displays items matching a specified regex within the proxy WebSocket history") {
@@ -354,7 +393,7 @@ fun Server.registerTools(api: MontoyaApi, config: McpConfig) {
 
         val compiledRegex = Pattern.compile(regex)
         api.proxy().webSocketHistory { it.contains(compiledRegex) }.asSequence()
-            .map { encodeHistoryItem(it.toSerializableForm()) }
+            .map { encodeHistoryItem(it.toSerializableForm(), config.historyItemMaxLength) }
     }
 
     mcpTool<SetTaskExecutionEngineState>("Sets the state of Burp's task execution engine (paused or unpaused)") {
@@ -498,6 +537,14 @@ data class GetProxyHttpHistory(override val count: Int, override val offset: Int
 
 @Serializable
 data class GetProxyHttpHistoryRegex(val regex: String, override val count: Int, override val offset: Int) : Paginated
+
+@Serializable
+data class SaveProxyHttpHistoryItems(
+    val directory: String,
+    override val count: Int,
+    override val offset: Int,
+    val regex: String? = null
+) : Paginated
 
 @Serializable
 data class GetOrganizerItems(override val count: Int, override val offset: Int) : Paginated

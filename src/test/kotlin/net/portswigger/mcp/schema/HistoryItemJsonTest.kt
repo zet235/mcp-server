@@ -52,4 +52,17 @@ class HistoryItemJsonTest {
             limitHistoryItemJson("{\"$oversizedKey\":0}")
         }
     }
+
+    @Test
+    fun `custom max length is honoured`() {
+        val item = HttpRequestResponse("r".repeat(15_000), "s".repeat(15_000), "keep me")
+
+        val larger = encodeHistoryItem(item, 20_000)
+        val parsed = Json.parseToJsonElement(larger).jsonObject
+        assertTrue(larger.length in 15_001..20_000)
+        assertTrue(parsed.getValue("request").jsonPrimitive.content.endsWith("... (truncated)"))
+
+        val unbounded = encodeHistoryItem(item, 100_000)
+        assertEquals(Json.encodeToString(item), unbounded)
+    }
 }

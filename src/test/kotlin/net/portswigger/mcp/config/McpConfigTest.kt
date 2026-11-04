@@ -284,4 +284,24 @@ class McpConfigTest {
         assertTrue(config.requireHttpRequestApproval)
         verify { persistedObject.setBoolean("requireHttpRequestApproval", true) }
     }
+
+    @Test
+    fun `historyItemMaxLength defaults to 5000 when unset`() {
+        every { persistedObject.getInteger("_historyItemMaxLength") } returns null
+
+        assertEquals(5_000, config.historyItemMaxLength)
+    }
+
+    @Test
+    fun `historyItemMaxLength persists and clamps values`() {
+        config.historyItemMaxLength = 20_000
+        assertEquals(20_000, config.historyItemMaxLength)
+        verify { persistedObject.setInteger("_historyItemMaxLength", 20_000) }
+
+        config.historyItemMaxLength = 10
+        assertEquals(1_000, config.historyItemMaxLength)
+
+        config.historyItemMaxLength = Int.MAX_VALUE
+        assertEquals(10_000_000, config.historyItemMaxLength)
+    }
 }
