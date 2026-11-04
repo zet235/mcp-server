@@ -15,6 +15,31 @@ import kotlinx.serialization.serializer
 import net.portswigger.mcp.schema.asInputSchema
 import kotlin.experimental.ExperimentalTypeInference
 
+const val MAX_TOOL_ERROR_FRAMES = 25
+
+/**
+ * Formats a tool failure for the MCP client. The first line keeps the historical
+ * "Error: <message>" shape; the cause chain follows with a bounded number of frames
+ * per throwable, so a deep wrapper cannot push the root cause out of the response.
+ */
+@PublishedApi
+internal fun formatToolError(error: Throwable): String = buildString {
+    append("Error: ").append(error.message)
+    val seen = mutableSetOf<Throwable>()
+    var current: Throwable? = error
+    while (current != null && seen.add(current)) {
+        append("\n\n")
+        if (current !== error) append("Caused by: ")
+        append(current.toString())
+        val frames = current.stackTrace
+        frames.take(MAX_TOOL_ERROR_FRAMES).forEach { append("\n\tat ").append(it) }
+        if (frames.size > MAX_TOOL_ERROR_FRAMES) {
+            append("\n\t... ").append(frames.size - MAX_TOOL_ERROR_FRAMES).append(" more")
+        }
+        current = current.cause
+    }
+}
+
 @OptIn(InternalSerializationApi::class)
 inline fun <reified I : Any> Server.mcpTool(
     description: String,
@@ -39,7 +64,7 @@ inline fun <reified I : Any> Server.mcpTool(
             throw e
         } catch (e: Exception) {
             CallToolResult(
-                content = listOf(TextContent("Error: ${e.message}")),
+                content = listOf(TextContent(formatToolError(e))),
                 isError = true
             )
         }

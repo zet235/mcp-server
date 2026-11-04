@@ -808,6 +808,25 @@ class ToolsKtTest {
         }
 
         @Test
+        fun `tool errors include the exception cause chain and stack trace`() {
+            val proxy = mockk<Proxy>()
+            every { api.proxy() } returns proxy
+            every { proxy.history() } throws RuntimeException(IndexOutOfBoundsException("Index: 3, Size: 3"))
+
+            runBlocking {
+                val result = client.callTool(
+                    "get_proxy_http_history", mapOf("count" to 1, "offset" to 0)
+                )
+
+                assertEquals(true, result?.isError)
+                val text = result.expectTextContent()
+                assertTrue(text.startsWith("Error: java.lang.IndexOutOfBoundsException: Index: 3, Size: 3"), text)
+                assertTrue(text.contains("Caused by: java.lang.IndexOutOfBoundsException: Index: 3, Size: 3"), text)
+                assertTrue(text.contains("\tat "), text)
+            }
+        }
+
+        @Test
         fun `get proxy history should return valid size limited JSON`() {
             val proxy = mockk<Proxy>()
             val historyItem = mockk<ProxyHttpRequestResponse>()
