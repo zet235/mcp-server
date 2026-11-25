@@ -60,19 +60,26 @@ entry including `url`; an entry with only the approval mode fails with `invalid 
 |---|---|
 | `get_proxy_http_history_regex` | First choice. Filters Proxy history by a Java regex over the whole request and response. |
 | `get_proxy_http_history` | Pages through all Proxy history in order. |
-| `get_proxy_http_history_by_id` | One item by its Burp request `id` (the number in Proxy > HTTP history, also the `id` field of history items). Use it to come back to a request you already found. |
-| `save_proxy_http_history_items` | Writes full, untruncated items to JSON files (one per item, raw request/response as base64 and UTF-8) in an absolute `directory` under the user's home. Optional `regex`; `count` 1-50. Returns file paths and a short summary only. |
 | `get_proxy_websocket_history[_regex]` | Same for WebSocket messages. |
 | `get_organizer_items[_regex]` | Items the user saved to Organizer. Often the ones they care about most. |
 | `get_scanner_issues` | Issues Burp Scanner has found (Professional only). |
 
-The paginated tools take `count` and `offset`. Start small (`count` 5-20) and page with `offset`;
-`Reached end of items` means there is nothing more. Each item is JSON capped at a length set in the `MCP` tab
-(5,000 characters by default), so long bodies are cut and marked `... (truncated)`. If you need the full
-request or response, save it with `save_proxy_http_history_items` and read the file rather than resending it.
+All of these take `count` and `offset`. Start small (`count` 5-20) and page with `offset`;
+`Reached end of items` means there is nothing more. Each item is JSON capped at about 5,000 characters,
+so long bodies are cut and marked `... (truncated)`. If you need the full response, resend the request.
 
 Prefer a regex on a host, path or parameter (`regex: "api\\.example\\.com/v2/users"`) over paging through
 everything.
+
+### Full items and request ids (this fork)
+
+The cap above defaults to 5,000 characters and is set in the `MCP` tab. When you need a full request or response,
+save it instead of resending it:
+
+| Tool | Use |
+|---|---|
+| `get_proxy_http_history_by_id` | One item by its Burp request `id` (the number in Proxy > HTTP history, also the `id` field of history items). Use it to come back to a request you already found. |
+| `save_proxy_http_history_items` | Writes full, untruncated items to JSON files (one per item, raw request/response as base64 and UTF-8) in an absolute `directory` under the user's home. Optional `regex`; `count` 1-50. Returns file paths and a short summary only. |
 
 ### Sending requests
 
