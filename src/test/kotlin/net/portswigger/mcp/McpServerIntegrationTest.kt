@@ -95,22 +95,36 @@ class McpServerIntegrationTest {
     }
 
     @Test
-    fun `streamable HTTP serves concurrent sessions from one server`() = runBlocking {
+    fun `streamable HTTP serves concurrent and later sessions from one server`() = runBlocking {
         every { api.utilities().urlUtils().encode("hello world") } returns "hello+world"
-        val clients = List(2) { TestSseMcpClient() }
+        val url = "http://127.0.0.1:${testPort}$STREAMABLE_HTTP_PATH"
+
+        suspend fun assertSessionWorks(session: TestSseMcpClient) {
+            assertTrue(session.listTools().any { it.name == "url_encode" }, "Server should have url_encode tool")
+
+            val result = session.callTool("url_encode", mapOf("content" to "hello world"))
+            assertFalse(result?.isError ?: false, "Tool call should not return an error")
+            assertEquals("hello+world", (result?.content?.single() as? TextContent)?.text)
+
+            assertNotNull(session.ping(), "Ping should return a result")
+        }
+
+        val first = TestSseMcpClient()
+        val second = TestSseMcpClient()
+        val later = TestSseMcpClient()
         try {
-            clients.forEach { it.connectToStreamableHttpServer("http://127.0.0.1:${testPort}$STREAMABLE_HTTP_PATH") }
-            clients.forEach { session ->
-                assertTrue(session.listTools().any { it.name == "url_encode" }, "Server should have url_encode tool")
+            first.connectToStreamableHttpServer(url)
+            second.connectToStreamableHttpServer(url)
+            assertSessionWorks(first)
+            assertSessionWorks(second)
 
-                val result = session.callTool("url_encode", mapOf("content" to "hello world"))
-                assertFalse(result?.isError ?: false, "Tool call should not return an error")
-                assertEquals("hello+world", (result?.content?.single() as? TextContent)?.text)
-
-                assertNotNull(session.ping(), "Ping should return a result")
-            }
+            // Closing one session must not tear down the shared Server for the others or for new ones.
+            first.close()
+            assertSessionWorks(second)
+            later.connectToStreamableHttpServer(url)
+            assertSessionWorks(later)
         } finally {
-            clients.forEach { if (it.isConnected()) it.close() }
+            listOf(first, second, later).forEach { if (it.isConnected()) it.close() }
         }
     }
 }

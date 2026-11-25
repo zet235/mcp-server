@@ -116,9 +116,12 @@ The Burp Suite MCP Server plugin sets up the connection and adds a skill that te
 which to reach for, how Burp's approval prompts behave and what to do when a call hangs.
 
 ```bash
-codex plugin marketplace add PortSwigger/mcp-server
-codex plugin add burp-suite-mcp-server@portswigger
+codex plugin marketplace add zet235/mcp-server
+codex plugin add burp-suite-mcp-server@zet235
 ```
+
+This fork's marketplace is named `zet235` so it can sit beside PortSwigger's; its skill also covers the fork's
+`get_proxy_http_history_by_id` and `save_proxy_http_history_items` tools.
 
 The plugin expects the extension on `http://127.0.0.1:9876`. If you changed the host or port, or want Codex to run
 the tools without asking (needed for non-interactive `codex exec` runs), override the server in

@@ -16,24 +16,23 @@ import org.slf4j.LoggerFactory
 class TestSseMcpClient {
     private val logger = LoggerFactory.getLogger(TestSseMcpClient::class.java)
     private val mcp: Client = Client(clientInfo = Implementation(name = "test-mcp-client", version = "1.0.0"))
-    private var connected = false
-
-    private lateinit var tools: List<Tool>
-
-    suspend fun connectToServer(sseUrl: String) {
-        connect(SseClientTransport(httpClient(), urlString = sseUrl))
-    }
-
-    suspend fun connectToStreamableHttpServer(url: String) {
-        connect(StreamableHttpClientTransport(httpClient(), url))
-    }
-
-    private fun httpClient() = HttpClient {
+    private val http = HttpClient {
         install(SSE)
         install(HttpTimeout) {
             requestTimeoutMillis = 30000
             connectTimeoutMillis = 15000
         }
+    }
+    private var connected = false
+
+    private lateinit var tools: List<Tool>
+
+    suspend fun connectToServer(sseUrl: String) {
+        connect(SseClientTransport(http, urlString = sseUrl))
+    }
+
+    suspend fun connectToStreamableHttpServer(url: String) {
+        connect(StreamableHttpClientTransport(http, url))
     }
 
     private suspend fun connect(transport: Transport) {
@@ -91,6 +90,8 @@ class TestSseMcpClient {
             logger.info("MCP client closed successfully.")
         } catch (e: Exception) {
             logger.error("Failed to close MCP client: $e")
+        } finally {
+            http.close()
         }
     }
 }

@@ -1,7 +1,7 @@
 {
-  "name": "portswigger",
+  "name": "zet235",
   "interface": {
-    "displayName": "PortSwigger"
+    "displayName": "Burp MCP (zet235 fork)"
   },
   "plugins": [
     {
