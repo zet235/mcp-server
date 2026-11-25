@@ -21,6 +21,10 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+const val STREAMABLE_HTTP_PATH = "/mcp"
+private const val MCP_SESSION_ID_HEADER = "Mcp-Session-Id"
+private const val MCP_PROTOCOL_VERSION_HEADER = "Mcp-Protocol-Version"
+
 class KtorServerManager(private val api: MontoyaApi) : ServerManager {
 
     private var server: EmbeddedServer<*, *>? = null
@@ -34,15 +38,14 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                 server?.stop(1000, 5000)
                 server = null
 
-                fun createMcpServer() = Server(
+                val mcpServer = Server(
                     serverInfo = Implementation("burp-suite", "1.1.2"), options = ServerOptions(
                         capabilities = ServerCapabilities(
                             tools = ServerCapabilities.Tools(listChanged = false)
                         )
                     )
-                ).also { it.registerTools(api, config) }
+                )
 
-                val mcpServer = createMcpServer()
                 server = embeddedServer(Netty, port = config.port, host = config.host) {
                     install(CORS) {
                         allowHost("localhost:${config.port}")
@@ -50,10 +53,14 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
 
                         allowMethod(HttpMethod.Get)
                         allowMethod(HttpMethod.Post)
+                        allowMethod(HttpMethod.Delete)
 
                         allowHeader(HttpHeaders.ContentType)
                         allowHeader(HttpHeaders.Accept)
                         allowHeader("Last-Event-ID")
+                        allowHeader(MCP_SESSION_ID_HEADER)
+                        allowHeader(MCP_PROTOCOL_VERSION_HEADER)
+                        exposeHeader(MCP_SESSION_ID_HEADER)
 
                         allowCredentials = false
                         allowNonSimpleContentTypes = true
@@ -94,13 +101,17 @@ class KtorServerManager(private val api: MontoyaApi) : ServerManager {
                         call.response.header("Content-Security-Policy", "default-src 'none'")
                     }
 
+                    // Legacy HTTP+SSE transport at "/", used by the bundled stdio proxy and existing clients.
                     mcp {
                         mcpServer
                     }
 
-                    mcpStreamableHttp(path = "/mcp") {
-                        createMcpServer()
+                    // Streamable HTTP transport at "/mcp", for clients that do not speak legacy SSE (e.g. Codex).
+                    mcpStreamableHttp(path = STREAMABLE_HTTP_PATH) {
+                        mcpServer
                     }
+
+                    mcpServer.registerTools(api, config)
                 }.apply {
                     start(wait = false)
                 }

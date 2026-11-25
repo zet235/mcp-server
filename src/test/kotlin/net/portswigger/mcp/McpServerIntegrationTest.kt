@@ -3,13 +3,9 @@ package net.portswigger.mcp
 import burp.api.montoya.MontoyaApi
 import burp.api.montoya.logging.Logging
 import burp.api.montoya.persistence.PersistedObject
-import io.ktor.client.HttpClient
-import io.ktor.client.plugins.sse.SSE
-import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.types.Implementation
-import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import io.mockk.every
 import io.mockk.mockk
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import net.portswigger.mcp.config.McpConfig
@@ -79,32 +75,6 @@ class McpServerIntegrationTest {
     }
 
     @Test
-    fun `streamable HTTP supports independent clients and tool calls`() = runBlocking {
-        every { api.utilities().urlUtils().encode("hello world") } returns "hello+world"
-        repeat(2) {
-            val http = HttpClient {
-                install(SSE)
-            }
-            val mcp = Client(
-                Implementation("codex-test", "1.0")
-            )
-            try {
-                mcp.connect(StreamableHttpClientTransport(
-                    http, url = "http://127.0.0.1:$testPort/mcp"
-                ))
-                assertTrue(mcp.listTools().tools.any { it.name == "url_encode" })
-                val result = mcp.callTool("url_encode", mapOf("content" to "hello world"))
-                assertEquals(false, result.isError ?: false)
-                assertEquals("hello+world", (result.content.single() as io.modelcontextprotocol.kotlin.sdk.types.TextContent).text)
-                assertNotNull(mcp.ping())
-            } finally {
-                mcp.close()
-                http.close()
-            }
-        }
-    }
-
-    @Test
     fun `server should accept connections and list tools`() = runBlocking {
         try {
             client.connectToServer("http://127.0.0.1:${testPort}")
@@ -121,6 +91,26 @@ class McpServerIntegrationTest {
             assertNotNull(pingResult, "Ping should return a result")
         } catch (e: Exception) {
             fail("Connection failed: ${e.message}")
+        }
+    }
+
+    @Test
+    fun `streamable HTTP serves concurrent sessions from one server`() = runBlocking {
+        every { api.utilities().urlUtils().encode("hello world") } returns "hello+world"
+        val clients = List(2) { TestSseMcpClient() }
+        try {
+            clients.forEach { it.connectToStreamableHttpServer("http://127.0.0.1:${testPort}$STREAMABLE_HTTP_PATH") }
+            clients.forEach { session ->
+                assertTrue(session.listTools().any { it.name == "url_encode" }, "Server should have url_encode tool")
+
+                val result = session.callTool("url_encode", mapOf("content" to "hello world"))
+                assertFalse(result?.isError ?: false, "Tool call should not return an error")
+                assertEquals("hello+world", (result?.content?.single() as? TextContent)?.text)
+
+                assertNotNull(session.ping(), "Ping should return a result")
+            }
+        } finally {
+            clients.forEach { if (it.isConnected()) it.close() }
         }
     }
 }

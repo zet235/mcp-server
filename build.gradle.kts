@@ -152,11 +152,3 @@ tasks.wrapper {
     gradleVersion = "9.2.0"
     distributionType = Wrapper.DistributionType.BIN
 }
-
-tasks.register<Zip>("codexPluginZip") {
-    group = "distribution"
-    description = "Packages the Codex plugin for the local Burp MCP server"
-    from(layout.projectDirectory.dir("plugins/burp-suite"))
-    archiveFileName.set("burp-suite-codex-plugin.zip")
-    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-}

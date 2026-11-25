@@ -10,6 +10,7 @@ For more information about the protocol visit: [modelcontextprotocol.io](https:/
 
 - Connect Burp Suite to AI clients through MCP
 - Automatic installation for Claude Desktop
+- Serves both Streamable HTTP (`/mcp`) and legacy SSE (`/`) transports
 - Comes with packaged Stdio MCP proxy server
 
 ## Usage
@@ -67,32 +68,6 @@ Configuration for the extension is done through the Burp Suite UI in the `MCP` t
 - **Enable config editing**: The `Enable tools that can edit your config` checkbox allows the MCP server to expose tools which can edit Burp configuration files.
 - **Advanced options**: You can configure the port and host for the MCP server. By default, it listens on `http://127.0.0.1:9876`.
 
-### Codex plugin
-
-The bundled Codex plugin connects directly to Streamable HTTP at
-`http://127.0.0.1:9876/mcp`. No Java proxy is needed by Codex. Existing SSE
-clients continue to work.
-
-1. Build the updated extension and plugin ZIP from this repository:
-   ```bash
-   ./gradlew embedProxyJar codexPluginZip
-   ```
-2. Load the updated extension JAR into Burp Suite and enable its MCP server.
-3. Add this repository as a local Codex plugin marketplace:
-   ```bash
-   codex plugin marketplace add /absolute/path/to/mcp-server
-   ```
-4. Restart Codex desktop, open Plugins, select **Burp Suite Local**, and install
-   **Burp Suite**. Start a new chat and ask Codex to list Burp tools.
-
-The repository marketplace is `.agents/plugins/marketplace.json`; plugin sources
-are in `plugins/burp-suite`. The distributable ZIP is
-`build/distributions/burp-suite-codex-plugin.zip`. It contains only the plugin
-configuration; Burp and its extension must already be running locally.
-If you change Burp's port, update `plugins/burp-suite/mcp.json` before reinstalling
-or packaging the plugin. Keep the server bound to loopback. Existing Burp
-approval settings still apply to tool calls.
-
 ### Claude Desktop Client
 
 To fully utilize the MCP Server Extension with Claude, you need to configure your Claude client settings appropriately.
@@ -131,12 +106,56 @@ The extension has an installer which will automatically configure the client set
 
 3. **Restart Claude Desktop** - assuming Burp is running with the extension loaded.
 
+### Codex
+
+Codex connects to the extension's Streamable HTTP endpoint directly; no proxy jar or Java path is needed.
+
+#### Plugin (recommended)
+
+The Burp Suite MCP Server plugin sets up the connection and adds a skill that teaches Codex how to use the tools:
+which to reach for, how Burp's approval prompts behave and what to do when a call hangs.
+
+```bash
+codex plugin marketplace add PortSwigger/mcp-server
+codex plugin add burp-suite-mcp-server@portswigger
+```
+
+The plugin expects the extension on `http://127.0.0.1:9876`. If you changed the host or port, or want Codex to run
+the tools without asking (needed for non-interactive `codex exec` runs), override the server in
+`~/.codex/config.toml`. Give the full entry, including `url`:
+
+```toml
+[mcp_servers.burp]
+url = "http://127.0.0.1:9876/mcp"
+default_tools_approval_mode = "approve"
+```
+
+#### Without the plugin
+
+```bash
+codex mcp add burp --url http://127.0.0.1:9876/mcp
+```
+
+The skill lives in `plugins/burp-suite-mcp-server/skills/burp-mcp`; copy that folder into `~/.codex/skills/` to use
+it without the plugin.
+
+#### Approvals
+
+By default the extension asks for approval in Burp before sending HTTP requests or reading proxy history, so keep an
+eye on Burp while Codex works, or use the auto-approve options in the `MCP` tab.
+
 ## Manual installations
 If you want to install the MCP server manually you can either use the extension's SSE server directly or the packaged
 Stdio proxy server.
 
+### Streamable HTTP MCP Server
+Clients that support the Streamable HTTP transport (e.g. Codex) can use the `/mcp` path on the configured server URL:
+```
+http://127.0.0.1:9876/mcp
+```
+
 ### SSE MCP Server
-To use the SSE server directly, provide the configured server URL to your MCP client:
+To use the legacy SSE server directly, provide the configured server URL to your MCP client:
 ```
 http://127.0.0.1:9876
 ```
